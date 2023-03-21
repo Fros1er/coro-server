@@ -17,3 +17,11 @@ void IOContext::register_mutex(const uint64_t &id, const uint64_t &mutex_id) {
 void IOContext::notify_mutex(const uint64_t &mutex_id) {
     mutex_handler_.notify_mutex(mutex_id);
 }
+
+EpollAwaitable IOContext::async_wait(int fd, EpollWaitType type) {
+    return epoll_ctx_.async_wait(fd, type);
+}
+
+void IOContext::register_epoll_event(const uint64_t &id, int fd, EpollWaitType type) {
+    epoll_ctx_.register_epoll_event(id, fd, type);
+}

@@ -101,6 +101,7 @@ void Runner::await_once() {
         auto &now = local_queue_.front();
         auto task_id = now->handle.promise().id;
         std::lock_guard guard1(sched_.blocking_map_lock);
+        fmt::print("runner task {} blocked\n", task_id);
         sched_.blocking_map_[task_id] = std::move(now);
     }
     curr_awaiting_ = true;
@@ -123,8 +124,11 @@ void Scheduler::spawn(Task<void> &&task) {
 }
 
 void Scheduler::await_once_ready(const uint64_t &task_id) {
+    fmt::print("sched task {} block stopped\n", task_id);
     std::lock_guard guard(blocking_map_lock);
     auto it = blocking_map_.find(task_id);
+    if (it == blocking_map_.end())
+        return;
     {
         std::lock_guard guard1(sched_lock_);
         global_queue_.push(std::move(it->second));

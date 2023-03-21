@@ -66,11 +66,13 @@ struct TaskPromise<void> {
     void unhandled_exception() {}
 };
 
-struct Awaitable {
-    bool await_ready() { return false; }
 
-    void await_suspend(std::coroutine_handle<TaskPromise<void>> handle) {
-    }
-
-    void await_resume() {}
-};
+//template <typename T>
+//struct Awaitable {
+//    bool await_ready() { return false; }
+//
+//    void await_suspend(std::coroutine_handle<TaskPromise<void>> handle) {
+//    }
+//
+//    T await_resume() {}
+//};
