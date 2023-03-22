@@ -16,6 +16,8 @@ class IOContext {
     uint64_t ctx_id_{0};
 
 public:
+    void run();
+
     void spawn(Task<void> &&task);
 
     void register_timer(const uint64_t &id, const time_point_t &until);
@@ -26,14 +28,12 @@ public:
 
     template<class Session>
     void start_handle(int fd, Session &session) {
-        epoll_ctx_.register_fd(fd, epoll_event{EPOLLET | EPOLLIN, {.fd=fd}});
-        epoll_ctx_.register_fd(fd, epoll_event{EPOLLET | EPOLLOUT, {.fd=fd}});
+        epoll_ctx_.register_fd(fd, epoll_event{EPOLLET | EPOLLIN | EPOLLOUT, {.fd=fd}});
+//        epoll_ctx_.register_fd(fd, epoll_event{EPOLLOUT, {.fd=fd}});
 
         session.start();
         // TODO: session stop
     }
 
     EpollAwaitable async_wait(int fd, EpollWaitType type);
-
-    void register_epoll_event(const uint64_t &id, int fd, EpollWaitType type);
 };

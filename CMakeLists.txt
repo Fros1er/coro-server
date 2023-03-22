@@ -6,10 +6,14 @@ set(CMAKE_CXX_STANDARD 20)
 include_directories(src)
 
 find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+
 
 add_executable(coro-server src/main.cpp src/coro/co_scheduler.cpp
         src/coro/epoll_context.cpp src/coro/io_context.cpp
         src/coro/timer_context.cpp src/coro/co_mutex.cpp
         src/server/socket.cpp)
 
-target_link_libraries(coro-server pthread fmt::fmt)
+target_link_libraries(coro-server pthread fmt::fmt spdlog::spdlog)

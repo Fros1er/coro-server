@@ -22,6 +22,6 @@ EpollAwaitable IOContext::async_wait(int fd, EpollWaitType type) {
     return epoll_ctx_.async_wait(fd, type);
 }
 
-void IOContext::register_epoll_event(const uint64_t &id, int fd, EpollWaitType type) {
-    epoll_ctx_.register_epoll_event(id, fd, type);
+void IOContext::run() {
+    sched_.run();
 }

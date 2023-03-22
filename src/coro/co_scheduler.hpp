@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include "utils/Uncopyable.hpp"
 #include <condition_variable>
-
+#include "spdlog/spdlog.h"
 
 class Scheduler;
 
@@ -16,7 +16,7 @@ using task_ptr_t = std::unique_ptr<Task<void>>;
 
 class Runner : Uncopyable {
     static int id_cnt;
-    int id;
+    int id_;
     // TODO: lock_free queue？
     std::mutex local_queue_lock_;
     std::list<task_ptr_t> local_queue_;
@@ -31,6 +31,8 @@ class Runner : Uncopyable {
     bool stole_task();
 
     void run();
+
+    friend class Scheduler;
 
 public:
     explicit Runner(Scheduler &sched);
@@ -47,11 +49,13 @@ class Scheduler : Uncopyable {
     std::unordered_map<uint64_t, task_ptr_t> blocking_map_; // place task in map when waiting
     std::condition_variable block_cv;
 
-//    void run();
+    std::thread thread_;
 
     friend class Runner;
 
 public:
+
+    void run();
 
     Scheduler();
 

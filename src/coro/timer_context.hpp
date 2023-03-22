@@ -52,6 +52,6 @@ public:
 
 TimerAwaitable sleep_until(const time_point_t &until);
 
-TimerAwaitable sleep_for(const std::chrono::nanoseconds time);
+TimerAwaitable sleep_for(const std::chrono::nanoseconds &time);
 
 

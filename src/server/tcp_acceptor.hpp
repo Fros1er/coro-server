@@ -8,6 +8,8 @@
 #include "coro/io_context.hpp"
 #include "server/socket.hpp"
 #include "utils/posix_call.hpp"
+#include <list>
+#include <fcntl.h>
 
 template<typename Session>
 class TCPAcceptor {
@@ -15,7 +17,7 @@ class TCPAcceptor {
     bool interrupted{false};
     int listen_fd;
     IOContext &ctx_;
-    std::vector<Session> sessions_;
+    std::list<Session> sessions_;
     std::thread thread_;
 
     void run() {
@@ -24,8 +26,11 @@ class TCPAcceptor {
             socklen_t in_size{0};
             int fd;
             POSIX_CALL_RETRY(fd, accept(listen_fd, reinterpret_cast<sockaddr *>(&in_addr), &in_size));
-            fmt::print("socket accepted\n");
-            sessions_.push_back(Session{Socket{fd, ctx_}});
+            int flags = fcntl(fd, F_GETFL);
+            flags |= O_NONBLOCK;
+            fcntl(fd, F_SETFL, flags);
+            spdlog::debug("socket accepted\n");
+            sessions_.emplace_back(Socket{fd, ctx_});
             ctx_.start_handle<Session>(fd, sessions_.back());
         }
     }

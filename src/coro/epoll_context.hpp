@@ -11,18 +11,20 @@ enum EpollWaitType {
     WRITE
 };
 
+class EpollContext;
+
 class EpollAwaitable {
-    bool block_;
     int fd_;
     EpollWaitType type_;
+    EpollContext *epoll_ctx_;
 
 public:
-    explicit EpollAwaitable(bool block, int fd, EpollWaitType type)
-            : block_{block}, fd_{fd}, type_{type} {}
+    explicit EpollAwaitable(int fd, EpollWaitType type, EpollContext *epoll_ctx)
+            : fd_{fd}, type_{type}, epoll_ctx_{epoll_ctx} {}
 
-    bool await_ready() { return block_; } // NOLINT
+    bool await_ready() { return false; } // NOLINT
 
-    void await_suspend(std::coroutine_handle<TaskPromise<void>> handle);
+    bool await_suspend(std::coroutine_handle<TaskPromise<void>> handle);
 
     void await_resume() {}
 };
@@ -40,6 +42,8 @@ class EpollContext : Uncopyable {
 
     void run();
 
+    friend class EpollAwaitable;
+
 public:
 
 
@@ -47,11 +51,7 @@ public:
 
     ~EpollContext();
 
-//    epoll_handler register_runner();
-
     void register_fd(int fd, epoll_event event) const;
 
     EpollAwaitable async_wait(int fd, EpollWaitType type);
-
-    void register_epoll_event(const uint64_t &id, int fd, EpollWaitType type);
 };

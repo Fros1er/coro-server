@@ -1,9 +1,9 @@
 #include <sys/epoll.h>
 #include <iostream>
-#include <fmt/core.h>
 #include "epoll_context.hpp"
 #include "io_context.hpp"
 #include "utils/posix_call.hpp"
+#include "spdlog/spdlog.h"
 
 constexpr int MAX_RECEIVED_EVENTS = 32;
 
@@ -16,9 +16,8 @@ void EpollContext::run() {
     std::vector<epoll_event> events(MAX_RECEIVED_EVENTS);
     while (!interrupted_) {
         POSIX_CALL_RETRY(n, epoll_wait(epoll_fd_, events.data(), MAX_RECEIVED_EVENTS, -1));
-        fmt::print("epoll_awake\n");
         if (n == -1) {
-            perror("epoll listener fatal: ");
+            SPDLOG_CRITICAL("epoll listener fatal: {}", strerror(errno));
             break;
         }
         for (int i = 0; i < n; i++) {
@@ -27,17 +26,24 @@ void EpollContext::run() {
             if (event.events & EPOLLIN) {
                 std::lock_guard guard(reader_lock_);
                 if (reader_task_map_.contains(fd)) {
+//                    spdlog::debug("epoll_awake read");
                     sched_.await_once_ready(reader_task_map_[fd]);
-                    continue;
+                    reader_task_map_.erase(fd);
+
+                } else if (reader_map_.contains(fd)) {
+//                    spdlog::debug("epoll_awake read set map");
+                    reader_map_[fd] = true;
                 }
-                reader_map_[fd] = true;
             } else if (event.events & EPOLLOUT) {
                 std::lock_guard guard(writer_lock_);
-                if (writer_map_.contains(fd)) {
-                    sched_.await_once_ready(reader_task_map_[fd]);
-                    continue;
+                spdlog::debug("epoll_awake write");
+                if (writer_task_map_.contains(fd)) {
+                    sched_.await_once_ready(writer_task_map_[fd]);
+                    writer_task_map_.erase(fd);
+                } else if (writer_map_.contains(fd)) {
+                    spdlog::debug("epoll_awake write set map");
+                    writer_map_[fd] = true;
                 }
-                writer_map_[fd] = true;
             }
         }
     }
@@ -55,41 +61,48 @@ EpollAwaitable EpollContext::async_wait(int fd, EpollWaitType type) {
     switch (type) {
         case READ: {
             std::lock_guard guard(reader_lock_);
-            if (reader_map_[fd]) {
-                return EpollAwaitable{true, fd, type};
-            }
+            reader_map_[fd] = false;
             break;
         }
         case WRITE: {
             std::lock_guard guard(writer_lock_);
-            if (writer_map_[fd]) {
-                return EpollAwaitable{true, fd, type};
-            }
+            writer_map_[fd] = false;
             break;
         }
     }
-    return EpollAwaitable(false, fd, type);
+    return EpollAwaitable(fd, type, this);
 }
 
-void EpollContext::register_epoll_event(const uint64_t &id, int fd, EpollWaitType type) {
-    switch (type) {
-        case READ: {
-            std::lock_guard guard(reader_lock_);
-            reader_task_map_[fd] = id;
-            break;
-        }
-        case WRITE: {
-            std::lock_guard guard(writer_lock_);
-            writer_task_map_[fd] = id;
-            break;
-        }
-    }
-}
-
-void EpollAwaitable::await_suspend(std::coroutine_handle<TaskPromise<void>> handle) {
+bool EpollAwaitable::await_suspend(std::coroutine_handle<TaskPromise<void>> handle) {
     auto &promise = handle.promise();
+    std::mutex *lock;
+    std::unordered_map<int, bool> *tmp_map;
+    std::unordered_map<int, uint64_t> *task_map;
+    switch (type_) {
+        case READ: {
+            lock = &epoll_ctx_->reader_lock_;
+            tmp_map = &epoll_ctx_->reader_map_;
+            task_map = &epoll_ctx_->reader_task_map_;
+            break;
+        }
+        case WRITE: {
+            lock = &epoll_ctx_->writer_lock_;
+            tmp_map = &epoll_ctx_->writer_map_;
+            task_map = &epoll_ctx_->writer_task_map_;
+            break;
+        }
+    }
+    std::lock_guard guard(*lock);
+    auto it = tmp_map->find(fd_);
+    bool unblock = it->second;
+    tmp_map->erase(it);
+    if (unblock) {
+        spdlog::debug("unblock");
+        return false;
+    }
     promise.runner_->await_once();
-    promise.ctx_->register_epoll_event(promise.id, fd_, type_);
+    (*task_map)[fd_] = promise.id;
+    return true;
 }
 
 

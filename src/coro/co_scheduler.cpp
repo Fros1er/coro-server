@@ -1,11 +1,12 @@
 #include <mutex>
 #include <condition_variable>
 #include "co_scheduler.hpp"
-#include "fmt/format.h"
+#include "spdlog/spdlog.h"
+#include <iostream>
 
 int Runner::id_cnt = 1;
 
-Runner::Runner(Scheduler &sched) : id(id_cnt++), sched_(sched), thread_(&Runner::run, this) {}
+Runner::Runner(Scheduler &sched) : id_{id_cnt++}, sched_(sched), thread_(&Runner::run, this) {}
 
 Runner::~Runner() {
     interrupted = true;
@@ -30,7 +31,7 @@ void Runner::run() {
 
 
         auto &handle = local_queue_.front()->handle;
-//        fmt::print("runner {} resume\n", id);
+//        fmt::print("runner {} resume\n", id_);
         handle.resume();
         {
             std::lock_guard guard(local_queue_lock_);
@@ -101,15 +102,15 @@ void Runner::await_once() {
         auto &now = local_queue_.front();
         auto task_id = now->handle.promise().id;
         std::lock_guard guard1(sched_.blocking_map_lock);
-        fmt::print("runner task {} blocked\n", task_id);
+//        spdlog::debug("runner task {} blocked", task_id);
         sched_.blocking_map_[task_id] = std::move(now);
     }
     curr_awaiting_ = true;
 }
 
 Scheduler::Scheduler()
-        : runners_(1) {
-//        : runners_(std::thread::hardware_concurrency()) {
+//        : runners_(1) {
+        : runners_(std::thread::hardware_concurrency()) {
     for (auto &p: runners_) {
         p = std::make_unique<Runner>(*this);
     }
@@ -124,17 +125,38 @@ void Scheduler::spawn(Task<void> &&task) {
 }
 
 void Scheduler::await_once_ready(const uint64_t &task_id) {
-    fmt::print("sched task {} block stopped\n", task_id);
+//    spdlog::debug("sched task {} block stopped", task_id);
     std::lock_guard guard(blocking_map_lock);
     auto it = blocking_map_.find(task_id);
-    if (it == blocking_map_.end())
-        return;
+//    if (it == blocking_map_.end())
+//        return;
     {
         std::lock_guard guard1(sched_lock_);
         global_queue_.push(std::move(it->second));
+        block_cv.notify_one();
     }
     blocking_map_.erase(it);
-    block_cv.notify_one();
+
+}
+
+void Scheduler::run() {
+    using namespace std::chrono_literals;
+    while (true) {
+        std::this_thread::sleep_for(2.5s);
+        std::lock_guard guard1(sched_lock_);
+        std::lock_guard guard(blocking_map_lock);
+        fmt::print("G: {}, B: {}, L:", global_queue_.size(), blocking_map_.size());
+        size_t s = 0;
+        for (auto &runner: runners_) {
+            std::lock_guard g(runner->local_queue_lock_);
+            fmt::print(" {}", runner->local_queue_.size());
+            s += runner->local_queue_.size();
+        }
+        if (s == 0 && !global_queue_.empty()) {
+//            block_cv.notify_one();
+        }
+        fmt::print("\n");
+    }
 }
 
 
